@@ -12,97 +12,36 @@ import (
 	"os"
 	"bytes"
 	"io/ioutil"
+	"sync"
+	"flag"
+	"strconv"
 )
 
+var containersSet map[int]string
 
 func main() {
+	testnum := flag.Int("num",0,"num")
+	flag.Parse()
+	containersSet = make(map[int]string)
+
+	wg := sync.WaitGroup{}
+	for i:=0;i<*testnum;i++ {
+		wg.Add(1)
+		go create(i,&wg)
+		//respId := create()
+		//containersSet[i]=respId
+	}
+	wg.Wait()
+	fmt.Println(containersSet)
+	wg = sync.WaitGroup{}
+	for i:=0;i<*testnum;i++ {
+		wg.Add(1)
+		go do(&wg,i,containersSet[i])
+	}
+	wg.Wait()
+	fmt.Println("do done.........")
 	ctx := context.Background()
 	cli, err := client.NewEnvClient()
-	if err != nil {
-		panic(err)
-	}
-
-	imageName := "beta5ubuntu"
-	resp, err := cli.ContainerCreate(ctx, &container.Config{
-		Image: imageName,
-		Cmd: []string{"/bin/bash"},
-		Tty: true,
-		//AttachStdin:true,   
-		AttachStdout:true, 
-		AttachStderr:true,
-	}, nil, nil, "")
-
-	if err != nil {
-		panic(err)
-	}
-
-	if err := cli.ContainerStart(ctx, resp.ID, types.ContainerStartOptions{}); err != nil {
-		panic(err)
-	}
-
-	fmt.Println(resp.ID)
-
-
-	SendToContainer("code.cpp" ,"/tmp/",resp.ID, ctx,cli) 
-
-	respexec,err := cli.ContainerExecCreate(ctx,resp.ID,types.ExecConfig{
-		//Tty:true,
-		//AttachStdin:true,
-		//Detach:true, AttachStdout:true, AttachStderr:true,
-		Cmd: []string{"sh","/tmp/complie.sh"},
-	})
-
-	if err != nil {
-		panic(err)
-	}
-
-	resprunexec,err := cli.ContainerExecAttach(ctx,respexec.ID,types.ExecStartCheck{
-		Tty:true,
-	})
-	if err != nil {
-		fmt.Println(err)
-	}
-
-	io.Copy(os.Stdout,resprunexec.Reader)
-	fmt.Println("finish exec")
-	
-	respp,_ := cli.ContainerExecInspect(ctx,respexec.ID)
-	fmt.Println(respp.ExitCode)
-	
-	SendToContainer("in.txt" ,"/tmp/",resp.ID, ctx,cli) 
-
-	time.Sleep(1*time.Second)
-	respexecruncode,err := cli.ContainerExecCreate(ctx,resp.ID,types.ExecConfig{
-		//Tty:true,
-		//AttachStdin:true,
-		//Detach:true,
-	    	AttachStdout:true,
-		AttachStderr:true,
-		Cmd: []string{"sh","/tmp/do.sh"},
-	})
-
-	if err != nil {
-		fmt.Println(err)
-		panic(err)
-	}
-
-	resprunexecruncode,err := cli.ContainerExecAttach(ctx,respexecruncode.ID,types.ExecStartCheck{
-		Tty:true,
-	})
-	if err != nil {
-		fmt.Println(err)
-	}
-
-	io.Copy(os.Stdout,resprunexecruncode.Reader)
-
-	resppp,_ := cli.ContainerExecInspect(ctx,respexecruncode.ID)
-	fmt.Println(resppp.ExitCode)
-
-	fmt.Println("finish exec")
-
-	CopyFromContainer("/tmp/out.txt","output.txt",resp.ID,ctx,cli)
-
-	time.Sleep(1*time.Second)
 
 	containers, err := cli.ContainerList(ctx, types.ContainerListOptions{})
 	if err != nil {
@@ -116,6 +55,7 @@ func main() {
 		}
 		fmt.Println("Success")
 	}
+
 }
 
 func CopyFromContainer(filePath,destPath,containerId string,ctx context.Context, cli *client.Client) {
@@ -176,3 +116,146 @@ func SendToContainer(filePath ,destPath,containerId string,ctx context.Context,c
 		fmt.Println(err1)	
 	}
 }
+
+func create(i int,wg *sync.WaitGroup) {
+	ctx := context.Background()
+	cli, err := client.NewEnvClient()
+	if err != nil {
+		panic(err)
+	}
+
+	imageName := "beta5ubuntu"
+	resp, err := cli.ContainerCreate(ctx, &container.Config{
+		Image: imageName,
+		Cmd: []string{"/bin/bash"},
+		Tty: true,
+		//AttachStdin:true,   
+		AttachStdout:true, 
+		AttachStderr:true,
+	}, nil, nil, "")
+
+	if err != nil {
+		panic(err)
+	}
+
+	if err := cli.ContainerStart(ctx, resp.ID, types.ContainerStartOptions{}); err != nil {
+		panic(err)
+	}
+
+	fmt.Println(resp.ID)
+	containersSet[i]=resp.ID
+	wg.Done()
+	//return resp.ID
+}
+
+func do(wg *sync.WaitGroup,i int,respID string) {
+	ctx := context.Background()
+	cli, err := client.NewEnvClient()
+	if err != nil {
+		panic(err)
+	}
+
+/*
+	imageName := "beta5ubuntu"
+	resp, err := cli.ContainerCreate(ctx, &container.Config{
+		Image: imageName,
+		Cmd: []string{"/bin/bash"},
+		Tty: true,
+		//AttachStdin:true,   
+		AttachStdout:true, 
+		AttachStderr:true,
+	}, nil, nil, "")
+
+	if err != nil {
+		panic(err)
+	}
+
+	if err := cli.ContainerStart(ctx, resp.ID, types.ContainerStartOptions{}); err != nil {
+		panic(err)
+	}
+
+	fmt.Println(resp.ID)
+
+*/
+//	SendToContainer("code.cpp" ,"/tmp/",resp.ID, ctx,cli) 
+	SendToContainer("code.cpp" ,"/tmp/",respID, ctx,cli) 
+
+	respexec,err := cli.ContainerExecCreate(ctx,respID,types.ExecConfig{
+		//Tty:true,
+		//AttachStdin:true,
+		//Detach:true, AttachStdout:true, AttachStderr:true,
+		Cmd: []string{"sh","/tmp/complie.sh"},
+	})
+
+	if err != nil {
+		panic(err)
+	}
+
+	resprunexec,err := cli.ContainerExecAttach(ctx,respexec.ID,types.ExecStartCheck{
+		Tty:true,
+	})
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	io.Copy(os.Stdout,resprunexec.Reader)
+	fmt.Println("finish exec")
+	
+	respp,_ := cli.ContainerExecInspect(ctx,respexec.ID)
+	fmt.Println(respp.ExitCode)
+	
+	SendToContainer("in.txt" ,"/tmp/",respID, ctx,cli) 
+
+	time.Sleep(1*time.Second)
+	respexecruncode,err := cli.ContainerExecCreate(ctx,respID,types.ExecConfig{
+		//Tty:true,
+		//AttachStdin:true,
+		//Detach:true,
+	    	AttachStdout:true,
+		AttachStderr:true,
+		Cmd: []string{"sh","/tmp/do.sh"},
+	})
+
+	if err != nil {
+		fmt.Println(err)
+		panic(err)
+	}
+
+	resprunexecruncode,err := cli.ContainerExecAttach(ctx,respexecruncode.ID,types.ExecStartCheck{
+		Tty:true,
+	})
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	io.Copy(os.Stdout,resprunexecruncode.Reader)
+
+	resppp,_ := cli.ContainerExecInspect(ctx,respexecruncode.ID)
+	fmt.Println(resppp.ExitCode)
+
+	fmt.Println("finish exec")
+
+	copytoPath := "/home/go_workplace/test_container/tmp/output" + strconv.Itoa(i) + ".txt"
+	fmt.Println(copytoPath)
+	CopyFromContainer("/tmp/out.txt",copytoPath,respID,ctx,cli)
+
+	//time.Sleep(1*time.Second)
+
+	wg.Done()
+}
+
+/*
+	containers, err := cli.ContainerList(ctx, types.ContainerListOptions{})
+	if err != nil {
+		panic(err)
+	}
+
+	for _, container := range containers {
+		fmt.Print("Stopping container ", container.ID[:10], "... ")
+		if err := cli.ContainerStop(ctx, container.ID, nil); err != nil {
+			panic(err)
+		}
+		fmt.Println("Success")
+	}
+
+*/
